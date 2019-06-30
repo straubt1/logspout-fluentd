@@ -21,17 +21,26 @@ func getenv(key, fallback string) string {
 
 // FluentdAdapter is an adapter for streaming JSON to a fluentd collector.
 type FluentdAdapter struct {
-	conn      net.Conn
-	route     *router.Route
-	tagPrefix string
+	conn             net.Conn
+	route            *router.Route
+	tagPrefix        string
+	serviceNameLabel string
 }
 
 // Stream handles a stream of messages from Logspout. Implements router.logAdapter.
 func (adapter *FluentdAdapter) Stream(logstream chan *router.Message) {
 	for message := range logstream {
 		timestamp := int32(time.Now().Unix())
-		serviceName := message.Container.Config.Labels["com.amazonaws.ecs.container-name"]
-		tag := adapter.tagPrefix + "." + serviceName
+		serviceName := message.Container.Config.Labels[adapter.serviceNameLabel]
+		tag := ""
+		// Set tag prefix
+		if len(adapter.tagPrefix) > 0 {
+			tag = adapter.tagPrefix
+		}
+		// Set tag suffix
+		if len(serviceName) > 0 {
+			tag = tag + "." + serviceName
+		}
 		record := make(map[string]string)
 		record["log"] = message.Data
 		record["container_id"] = message.Container.ID
@@ -58,28 +67,24 @@ func (adapter *FluentdAdapter) Stream(logstream chan *router.Message) {
 // NewFluentdAdapter creates a Logspout fluentd adapter instance.
 func NewFluentdAdapter(route *router.Route) (router.LogAdapter, error) {
 	transport, found := router.AdapterTransports.Lookup(route.AdapterTransport("tcp"))
-	log.Println("Hello")
 
 	if !found {
 		return nil, errors.New("unable to find adapter: " + route.Adapter)
 	}
 
-	log.Println(route.Address)
 	conn, err := transport.Dial(route.Address, route.Options)
 	if err != nil {
 		return nil, err
 	}
 
 	return &FluentdAdapter{
-		conn:      conn,
-		route:     route,
-		tagPrefix: getenv("TAG_PREFIX", "magine.service"),
+		conn:             conn,
+		route:            route,
+		tagPrefix:        getenv("TAG_PREFIX", "docker"),
+		serviceNameLabel: getenv("SERVICE_NAME_LABEL", ""),
 	}, nil
 }
 
 func init() {
-	log.Println("In init")
-	res := router.AdapterFactories.Register(NewFluentdAdapter, "fluentd-tcp")
-	log.Println("Results")
-	log.Println(res)
+	router.AdapterFactories.Register(NewFluentdAdapter, "fluentd-tcp")
 }

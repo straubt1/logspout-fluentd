@@ -26,7 +26,6 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X main.Version=$1"
 # # Final stage
 # #
 FROM alpine
-ENV TAG_PREFIX magine.service
 WORKDIR /app
 COPY --from=builder /bin/logspout /app/
 ENTRYPOINT ./logspout
