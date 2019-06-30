@@ -5,39 +5,48 @@ import (
 	"errors"
 	"log"
 	"net"
+	"os"
 	"time"
 
 	"github.com/gliderlabs/logspout/router"
 )
 
+func getenv(key, fallback string) string {
+	value := os.Getenv(key)
+	if len(value) == 0 {
+		return fallback
+	}
+	return value
+}
+
 // FluentdAdapter is an adapter for streaming JSON to a fluentd collector.
 type FluentdAdapter struct {
-	conn  net.Conn
-	route *router.Route
+	conn      net.Conn
+	route     *router.Route
+	tagPrefix string
 }
 
 // Stream handles a stream of messages from Logspout. Implements router.logAdapter.
 func (adapter *FluentdAdapter) Stream(logstream chan *router.Message) {
 	for message := range logstream {
 		timestamp := int32(time.Now().Unix())
-		tag := "docker." + message.Container.Config.Hostname
+		serviceName := message.Container.Config.Labels["com.amazonaws.ecs.container-name"]
+		tag := adapter.tagPrefix + "." + serviceName
 		record := make(map[string]string)
-		record["message"] = message.Data
-		record["docker.hostname"] = message.Container.Config.Hostname
-		record["docker.id"] = message.Container.ID
-		record["docker.image"] = message.Container.Config.Image
-		record["docker.name"] = message.Container.Name
-		for label, value := range message.Container.Config.Labels {
-			record["docker.label."+label] = value
-		}
-		data := []interface{}{tag, timestamp, record}
+		record["log"] = message.Data
+		record["container_id"] = message.Container.ID
+		record["container_name"] = message.Container.Name
+		record["source"] = message.Source
 
+		// Construct data to JSON
+		data := []interface{}{tag, timestamp, record}
 		json, err := json.Marshal(data)
 		if err != nil {
 			log.Println("fluentd-adapter: ", err)
 			continue
 		}
 
+		// Send to fluentd
 		_, err = adapter.conn.Write(json)
 		if err != nil {
 			log.Println("fluentd-adapter: ", err)
@@ -49,22 +58,28 @@ func (adapter *FluentdAdapter) Stream(logstream chan *router.Message) {
 // NewFluentdAdapter creates a Logspout fluentd adapter instance.
 func NewFluentdAdapter(route *router.Route) (router.LogAdapter, error) {
 	transport, found := router.AdapterTransports.Lookup(route.AdapterTransport("tcp"))
+	log.Println("Hello")
 
 	if !found {
 		return nil, errors.New("unable to find adapter: " + route.Adapter)
 	}
 
+	log.Println(route.Address)
 	conn, err := transport.Dial(route.Address, route.Options)
 	if err != nil {
 		return nil, err
 	}
 
 	return &FluentdAdapter{
-		conn:  conn,
-		route: route,
+		conn:      conn,
+		route:     route,
+		tagPrefix: getenv("TAG_PREFIX", "magine.service"),
 	}, nil
 }
 
 func init() {
-	router.AdapterFactories.Register(NewFluentdAdapter, "fluentd-tcp")
+	log.Println("In init")
+	res := router.AdapterFactories.Register(NewFluentdAdapter, "fluentd-tcp")
+	log.Println("Results")
+	log.Println(res)
 }
