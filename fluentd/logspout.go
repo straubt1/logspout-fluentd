@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"regexp"
 
 	"github.com/gliderlabs/logspout/router"
 )
@@ -29,6 +30,13 @@ type FluentdAdapter struct {
 // Stream handles a stream of messages from Logspout. Implements router.logAdapter.
 func (adapter *FluentdAdapter) Stream(logstream chan *router.Message) {
 	for message := range logstream {
+		// Skip if message is empty
+		messageIsEmpty, err := regexp.MatchString("^[[:space:]]*$", message.Data)
+		if messageIsEmpty {
+			log.Println("Skipping empty message!")
+			continue
+		}
+
 		timestamp := int32(message.Time.Unix())
 		serviceName := message.Container.Config.Labels[adapter.serviceNameLabel]
 		tag := ""
