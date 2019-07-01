@@ -6,7 +6,6 @@ import (
 	"log"
 	"net"
 	"os"
-	"time"
 
 	"github.com/gliderlabs/logspout/router"
 )
@@ -30,7 +29,7 @@ type FluentdAdapter struct {
 // Stream handles a stream of messages from Logspout. Implements router.logAdapter.
 func (adapter *FluentdAdapter) Stream(logstream chan *router.Message) {
 	for message := range logstream {
-		timestamp := int32(time.Now().Unix())
+		timestamp := int32(message.Time.Unix())
 		serviceName := message.Container.Config.Labels[adapter.serviceNameLabel]
 		tag := ""
 		// Set tag prefix
