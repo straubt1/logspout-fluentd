@@ -1,5 +1,23 @@
 package fluentd
 
+/**
+*
+*
+This is a fluent forwarder plugin for Logspout. It uses the fluent-logger-golang
+library to forward logs to fluentd (or fluentbit). Run logspout via the following
+command after building:
+
+	>> docker run --rm --name="logspout" \
+			-v /var/run/docker.sock:/var/run/docker.sock \
+			-e TAG_PREFIX=docker \
+			-e TAG_SUFFIX_LABEL="com.amazonaws.ecs.container-name" \
+			-e FLUENTD_ASYNC_CONNECT="true" \
+			-e LOGSPOUT="ignore" \
+			<REGISTRY>/<CUSTOM_LOGSPOUT>:<VERSION> \
+				./logspout fluentd-forwarder://<FLUENTD_IP>:<FLUENTD_PORT>
+*
+*
+*/
 import (
 	"errors"
 	"log"
@@ -29,15 +47,15 @@ func getenv(key, fallback string) string {
 	return value
 }
 
-// FluentdAdapter is an adapter for streaming JSON to a fluentd collector.
-type FluentdAdapter struct {
-	writer           *fluent.Fluent
-	tagPrefix        string
-	serviceNameLabel string
+// Adapter is an adapter for streaming JSON to a fluentd collector.
+type Adapter struct {
+	writer         *fluent.Fluent
+	tagPrefix      string
+	tagSuffixLabel string
 }
 
 // Stream handles a stream of messages from Logspout. Implements router.logAdapter.
-func (adapter *FluentdAdapter) Stream(logstream chan *router.Message) {
+func (ad *Adapter) Stream(logstream chan *router.Message) {
 	for message := range logstream {
 		// Skip if message is empty
 		messageIsEmpty, err := regexp.MatchString("^[[:space:]]*$", message.Data)
@@ -46,16 +64,15 @@ func (adapter *FluentdAdapter) Stream(logstream chan *router.Message) {
 			continue
 		}
 
-		// ts := int32(message.Time.Unix())
-		serviceName := message.Container.Config.Labels[adapter.serviceNameLabel]
+		tagSuffix := message.Container.Config.Labels[ad.tagSuffixLabel]
 		tag := ""
 		// Set tag prefix
-		if len(adapter.tagPrefix) > 0 {
-			tag = adapter.tagPrefix
+		if len(ad.tagPrefix) > 0 {
+			tag = ad.tagPrefix
 		}
 		// Set tag suffix
-		if len(serviceName) > 0 {
-			tag = tag + "." + serviceName
+		if len(tagSuffix) > 0 {
+			tag = tag + "." + tagSuffix
 		}
 		// log.Println("Tag:" + tag)
 		record := make(map[string]string)
@@ -65,7 +82,7 @@ func (adapter *FluentdAdapter) Stream(logstream chan *router.Message) {
 		record["source"] = message.Source
 
 		// Send to fluentd
-		err = adapter.writer.PostWithTime(tag, message.Time, record)
+		err = ad.writer.PostWithTime(tag, message.Time, record)
 		if err != nil {
 			log.Println("fluentd-adapter: ", err)
 			continue
@@ -73,12 +90,12 @@ func (adapter *FluentdAdapter) Stream(logstream chan *router.Message) {
 	}
 }
 
-// NewFluentdAdapter creates a Logspout fluentd adapter instance.
-func NewFluentdAdapter(route *router.Route) (router.LogAdapter, error) {
+// NewAdapter creates a Logspout fluentd adapter instance.
+func NewAdapter(route *router.Route) (router.LogAdapter, error) {
 	transport, found := router.AdapterTransports.Lookup(route.AdapterTransport("tcp"))
 
 	if !found {
-		return nil, errors.New("unable to find adapter: " + route.Adapter)
+		return nil, errors.New("Unable to find adapter: " + route.Adapter)
 	}
 
 	_, err := transport.Dial(route.Address, route.Options)
@@ -131,13 +148,13 @@ func NewFluentdAdapter(route *router.Route) (router.LogAdapter, error) {
 	}
 	writer, err := fluent.New(fluentConfig)
 
-	return &FluentdAdapter{
-		writer:           writer,
-		tagPrefix:        getenv("TAG_PREFIX", "docker"),
-		serviceNameLabel: getenv("SERVICE_NAME_LABEL", ""),
+	return &Adapter{
+		writer:         writer,
+		tagPrefix:      getenv("TAG_PREFIX", "docker"),
+		tagSuffixLabel: getenv("TAG_SUFFIX_LABEL", ""),
 	}, nil
 }
 
 func init() {
-	router.AdapterFactories.Register(NewFluentdAdapter, "fluentd-tcp")
+	router.AdapterFactories.Register(NewAdapter, "fluentd-forwarder")
 }
