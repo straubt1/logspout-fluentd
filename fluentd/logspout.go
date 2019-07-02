@@ -19,7 +19,6 @@ command after building:
 *
 */
 import (
-	"errors"
 	"log"
 	"math"
 	"net"
@@ -29,6 +28,7 @@ import (
 
 	"github.com/fluent/fluent-logger-golang/fluent"
 	"github.com/gliderlabs/logspout/router"
+	"github.com/pkg/errors"
 )
 
 const (
@@ -64,17 +64,20 @@ func (ad *Adapter) Stream(logstream chan *router.Message) {
 			continue
 		}
 
-		tagSuffix := message.Container.Config.Labels[ad.tagSuffixLabel]
+		// Set tag
 		tag := ""
-		// Set tag prefix
 		if len(ad.tagPrefix) > 0 {
 			tag = ad.tagPrefix
 		}
-		// Set tag suffix
+		tagSuffix := message.Container.Config.Labels[ad.tagSuffixLabel]
+		if tagSuffix == "" {
+			tagSuffix = message.Container.Config.Hostname
+		}
 		if len(tagSuffix) > 0 {
 			tag = tag + "." + tagSuffix
 		}
-		// log.Println("Tag:" + tag)
+
+		// Construct record
 		record := make(map[string]string)
 		record["log"] = message.Data
 		record["container_id"] = message.Container.ID
@@ -92,22 +95,16 @@ func (ad *Adapter) Stream(logstream chan *router.Message) {
 
 // NewAdapter creates a Logspout fluentd adapter instance.
 func NewAdapter(route *router.Route) (router.LogAdapter, error) {
-	transport, found := router.AdapterTransports.Lookup(route.AdapterTransport("tcp"))
-
+	_, found := router.AdapterTransports.Lookup(route.AdapterTransport("tcp"))
 	if !found {
 		return nil, errors.New("Unable to find adapter: " + route.Adapter)
-	}
-
-	_, err := transport.Dial(route.Address, route.Options)
-	if err != nil {
-		return nil, err
 	}
 
 	// Construct fluentd config object
 	host, port, err := net.SplitHostPort(route.Address)
 	portNum, err := strconv.Atoi(port)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "Invalid fluentd-address %s", route.Address)
 	}
 
 	bufferLimit, err := strconv.Atoi(getenv("FLUENTD_BUFFER_LIMIT", strconv.Itoa(defaultBufferLimit)))

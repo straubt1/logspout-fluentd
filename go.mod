@@ -10,5 +10,6 @@ require (
 	github.com/gorilla/handlers v1.4.0 // indirect
 	github.com/kr/pretty v0.1.0 // indirect
 	github.com/philhofer/fwd v1.0.0 // indirect
+	github.com/pkg/errors v0.8.1
 	github.com/tinylib/msgp v1.1.0 // indirect
 )
