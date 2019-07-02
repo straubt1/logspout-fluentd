@@ -1,15 +1,24 @@
 package fluentd
 
 import (
-	"encoding/json"
 	"errors"
 	"log"
+	"math"
 	"net"
 	"os"
 	"regexp"
-	"time"
+	"strconv"
 
+	"github.com/fluent/fluent-logger-golang/fluent"
 	"github.com/gliderlabs/logspout/router"
+)
+
+const (
+	defaultProtocol    = "tcp"
+	defaultBufferLimit = 1024 * 1024
+
+	defaultRetryWait  = 1000
+	defaultMaxRetries = math.MaxInt32
 )
 
 func getenv(key, fallback string) string {
@@ -22,77 +31,9 @@ func getenv(key, fallback string) string {
 
 // FluentdAdapter is an adapter for streaming JSON to a fluentd collector.
 type FluentdAdapter struct {
-	conn             net.Conn
-	route            *router.Route
-	transport        router.AdapterTransport
+	writer           *fluent.Fluent
 	tagPrefix        string
 	serviceNameLabel string
-}
-
-func retryExp(fun func() error, tries uint) error {
-	try := uint(0)
-	for {
-		err := fun()
-		if err == nil {
-			return nil
-		}
-
-		try++
-		if try > tries {
-			return err
-		}
-
-		time.Sleep((1 << try) * 10 * time.Millisecond)
-	}
-}
-
-func (adapter *FluentdAdapter) retryTemporary(json []byte) error {
-	log.Println("fluentd-adapter: retrying tcp up to 11 times")
-	err := retryExp(func() error {
-		_, err := adapter.conn.Write(json)
-		if err == nil {
-			log.Println("fluentd-adapter: retry successful")
-			return nil
-		}
-
-		return err
-	}, 11)
-
-	if err != nil {
-		log.Println("fluentd-adapter: retry failed")
-		return err
-	}
-
-	return nil
-}
-
-func (adapter *FluentdAdapter) reconnect() error {
-	log.Println("fluentd-adapter: reconnecting forever")
-
-	for {
-		conn, err := adapter.transport.Dial(adapter.route.Address, adapter.route.Options)
-		if err != nil {
-			time.Sleep(10 * time.Second)
-			continue
-		}
-
-		log.Println("fluentd-adapter: reconnected")
-
-		adapter.conn = conn
-		return nil
-	}
-}
-func (adapter *FluentdAdapter) retry(json []byte, err error) error {
-	if opError, ok := err.(*net.OpError); ok {
-		if opError.Temporary() || opError.Timeout() {
-			retryErr := adapter.retryTemporary(json)
-			if retryErr == nil {
-				return nil
-			}
-		}
-	}
-
-	return adapter.reconnect()
 }
 
 // Stream handles a stream of messages from Logspout. Implements router.logAdapter.
@@ -105,7 +46,7 @@ func (adapter *FluentdAdapter) Stream(logstream chan *router.Message) {
 			continue
 		}
 
-		timestamp := int32(message.Time.Unix())
+		// ts := int32(message.Time.Unix())
 		serviceName := message.Container.Config.Labels[adapter.serviceNameLabel]
 		tag := ""
 		// Set tag prefix
@@ -116,29 +57,18 @@ func (adapter *FluentdAdapter) Stream(logstream chan *router.Message) {
 		if len(serviceName) > 0 {
 			tag = tag + "." + serviceName
 		}
-		log.Println("Tag:" + tag)
+		// log.Println("Tag:" + tag)
 		record := make(map[string]string)
 		record["log"] = message.Data
 		record["container_id"] = message.Container.ID
 		record["container_name"] = message.Container.Name
 		record["source"] = message.Source
 
-		// Construct data to JSON
-		data := []interface{}{tag, timestamp, record}
-		json, err := json.Marshal(data)
+		// Send to fluentd
+		err = adapter.writer.PostWithTime(tag, message.Time, record)
 		if err != nil {
 			log.Println("fluentd-adapter: ", err)
 			continue
-		}
-
-		// Send to fluentd
-		_, err = adapter.conn.Write(json)
-		if err != nil {
-			err = adapter.retry(json, err)
-			if err != nil {
-				log.Println("fluentd-adapter: ", err)
-				continue
-			}
 		}
 	}
 }
@@ -151,15 +81,58 @@ func NewFluentdAdapter(route *router.Route) (router.LogAdapter, error) {
 		return nil, errors.New("unable to find adapter: " + route.Adapter)
 	}
 
-	conn, err := transport.Dial(route.Address, route.Options)
+	_, err := transport.Dial(route.Address, route.Options)
 	if err != nil {
 		return nil, err
 	}
 
+	// Construct fluentd config object
+	host, port, err := net.SplitHostPort(route.Address)
+	portNum, err := strconv.Atoi(port)
+	if err != nil {
+		return nil, err
+	}
+
+	bufferLimit, err := strconv.Atoi(getenv("FLUENTD_BUFFER_LIMIT", strconv.Itoa(defaultBufferLimit)))
+	if err != nil {
+		return nil, err
+	}
+
+	retryWait, err := strconv.Atoi(getenv("FLUENTD_RETRY_WAIT", strconv.Itoa(defaultRetryWait)))
+	if err != nil {
+		return nil, err
+	}
+
+	maxRetries, err := strconv.Atoi(getenv("FLUENTD_MAX_RETRIES", strconv.Itoa(defaultMaxRetries)))
+	if err != nil {
+		return nil, err
+	}
+
+	asyncConnect, err := strconv.ParseBool(getenv("FLUENTD_ASYNC_CONNECT", "false"))
+	if err != nil {
+		return nil, err
+	}
+
+	subSecondPrecision, err := strconv.ParseBool(getenv("FLUENTD_SUBSECOND_PRECISION", "false"))
+	if err != nil {
+		return nil, err
+	}
+
+	fluentConfig := fluent.Config{
+		FluentHost:         host,
+		FluentPort:         portNum,
+		FluentNetwork:      defaultProtocol,
+		FluentSocketPath:   "",
+		BufferLimit:        bufferLimit,
+		RetryWait:          retryWait,
+		MaxRetry:           maxRetries,
+		Async:              asyncConnect,
+		SubSecondPrecision: subSecondPrecision,
+	}
+	writer, err := fluent.New(fluentConfig)
+
 	return &FluentdAdapter{
-		conn:             conn,
-		route:            route,
-		transport:        transport,
+		writer:           writer,
 		tagPrefix:        getenv("TAG_PREFIX", "docker"),
 		serviceNameLabel: getenv("SERVICE_NAME_LABEL", ""),
 	}, nil
