@@ -73,16 +73,16 @@ func (ad *Adapter) Stream(logstream chan *router.Message) {
 		if tagSuffix == "" {
 			tagSuffix = message.Container.Config.Hostname
 		}
-		if len(tagSuffix) > 0 {
-			tag = tag + "." + tagSuffix
-		}
+		tag = tag + "." + tagSuffix
 
 		// Construct record
-		record := make(map[string]string)
-		record["log"] = message.Data
-		record["container_id"] = message.Container.ID
-		record["container_name"] = message.Container.Name
-		record["source"] = message.Source
+		record := map[string]string{
+			"log":            message.Data,
+			"container_id":   message.Container.ID,
+			"container_name": message.Container.Name,
+			"source":         message.Source,
+		}
+		log.Println(tag, message.Time, record)
 
 		// Send to fluentd
 		err = ad.writer.PostWithTime(tag, message.Time, record)
@@ -95,10 +95,15 @@ func (ad *Adapter) Stream(logstream chan *router.Message) {
 
 // NewAdapter creates a Logspout fluentd adapter instance.
 func NewAdapter(route *router.Route) (router.LogAdapter, error) {
-	_, found := router.AdapterTransports.Lookup(route.AdapterTransport("tcp"))
+	transport, found := router.AdapterTransports.Lookup(route.AdapterTransport("tcp"))
 	if !found {
 		return nil, errors.New("Unable to find adapter: " + route.Adapter)
 	}
+	_, err := transport.Dial(route.Address, route.Options)
+	if err != nil {
+		return nil, err
+	}
+	log.Println("Connectivity successful to fluentd @ " + route.Address)
 
 	// Construct fluentd config object
 	host, port, err := net.SplitHostPort(route.Address)
@@ -142,8 +147,12 @@ func NewAdapter(route *router.Route) (router.LogAdapter, error) {
 		MaxRetry:           maxRetries,
 		Async:              asyncConnect,
 		SubSecondPrecision: subSecondPrecision,
+		RequestAck:         true,
 	}
 	writer, err := fluent.New(fluentConfig)
+	if err != nil {
+		return nil, errors.Wrapf(err, "Unable to create fluentd logger")
+	}
 
 	return &Adapter{
 		writer:         writer,
@@ -153,5 +162,5 @@ func NewAdapter(route *router.Route) (router.LogAdapter, error) {
 }
 
 func init() {
-	router.AdapterFactories.Register(NewAdapter, "fluentd-forwarder")
+	router.AdapterFactories.Register(NewAdapter, "fluentd")
 }
