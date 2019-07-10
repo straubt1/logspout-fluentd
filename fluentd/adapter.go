@@ -14,7 +14,7 @@ command after building:
 			-e FLUENTD_ASYNC_CONNECT="true" \
 			-e LOGSPOUT="ignore" \
 			<REGISTRY>/<CUSTOM_LOGSPOUT>:<VERSION> \
-				./logspout fluentd-forwarder://<FLUENTD_IP>:<FLUENTD_PORT>
+				./logspout fluentd://<FLUENTD_IP>:<FLUENTD_PORT>
 *
 *
 */
@@ -87,7 +87,7 @@ func (ad *Adapter) Stream(logstream chan *router.Message) {
 		// Send to fluentd
 		err = ad.writer.PostWithTime(tag, message.Time, record)
 		if err != nil {
-			log.Println("fluentd-adapter: ", err)
+			log.Println("fluentd-adapter PostWithTime Error: ", err)
 			continue
 		}
 	}
