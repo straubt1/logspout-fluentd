@@ -25,6 +25,7 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	"time"
 
 	"github.com/fluent/fluent-logger-golang/fluent"
 	"github.com/gliderlabs/logspout/router"
@@ -150,7 +151,8 @@ func NewAdapter(route *router.Route) (router.LogAdapter, error) {
 
 		// RequestAck currently doesn't work with fluent-bit
 		// https://github.com/fluent/fluent-bit/issues/786
-		RequestAck: false,
+		RequestAck:   false,
+		WriteTimeout: 3 * time.Second,
 	}
 	writer, err := fluent.New(fluentConfig)
 	if err != nil {
