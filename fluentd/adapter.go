@@ -147,7 +147,10 @@ func NewAdapter(route *router.Route) (router.LogAdapter, error) {
 		MaxRetry:           maxRetries,
 		Async:              asyncConnect,
 		SubSecondPrecision: subSecondPrecision,
-		RequestAck:         true,
+
+		// RequestAck currently doesn't work with fluent-bit
+		// https://github.com/fluent/fluent-bit/issues/786
+		RequestAck: false,
 	}
 	writer, err := fluent.New(fluentConfig)
 	if err != nil {
