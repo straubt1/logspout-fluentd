@@ -36,8 +36,9 @@ const (
 	defaultProtocol    = "tcp"
 	defaultBufferLimit = 1024 * 1024
 
-	defaultRetryWait  = 1000
-	defaultMaxRetries = math.MaxInt32
+	defaultWriteTimeout = 3
+	defaultRetryWait    = 1000
+	defaultMaxRetries   = math.MaxInt32
 )
 
 func getenv(key, fallback string) string {
@@ -72,7 +73,7 @@ func (ad *Adapter) Stream(logstream chan *router.Message) {
 		}
 		tagSuffix := message.Container.Config.Labels[ad.tagSuffixLabel]
 		if tagSuffix == "" {
-			tagSuffix = message.Container.Config.Hostname
+			tagSuffix = message.Container.Name + "-" + message.Container.Config.Hostname
 		}
 		tag = tag + "." + tagSuffix
 
@@ -138,6 +139,16 @@ func NewAdapter(route *router.Route) (router.LogAdapter, error) {
 		return nil, err
 	}
 
+	requestAck, err := strconv.ParseBool(getenv("FLUENTD_REQUEST_ACK", "false"))
+	if err != nil {
+		return nil, err
+	}
+
+	writeTimeout, err := strconv.Atoi(getenv("FLUENTD_WRITE_TIMEOUT", strconv.Itoa(defaultWriteTimeout)))
+	if err != nil {
+		return nil, err
+	}
+
 	fluentConfig := fluent.Config{
 		FluentHost:         host,
 		FluentPort:         portNum,
@@ -150,9 +161,10 @@ func NewAdapter(route *router.Route) (router.LogAdapter, error) {
 		SubSecondPrecision: subSecondPrecision,
 
 		// RequestAck currently doesn't work with fluent-bit
+		// Set to false for now if forwarding to fluent-bit.
 		// https://github.com/fluent/fluent-bit/issues/786
-		RequestAck:   false,
-		WriteTimeout: 3 * time.Second,
+		RequestAck:   requestAck,
+		WriteTimeout: time.Duration(writeTimeout) * time.Second,
 	}
 	writer, err := fluent.New(fluentConfig)
 	if err != nil {
