@@ -32,11 +32,13 @@ Optional environment variables:
 The other fluentd specific environment variables include the list below and
 their explanation can be better read from the fluentd log driver [website](https://docs.docker.com/config/containers/logging/fluentd/).
 
-- `FLUENTD_BUFFER_LIMIT` The amount of data to buffer before flushing to disk. Defaults to the amount of RAM available to the container.
-- `FLUENTD_RETRY_WAIT` How long to wait between retries. Defaults to 1 second.
-- `FLUENTD_MAX_RETRIES` The maximum number of retries. Defaults to 10.
-- `FLUENTD_ASYNC_CONNECT` Docker connects to Fluentd in the background. Messages are buffered until the connection is established. Defaults to false.
-- `FLUENTD_SUBSECOND_PRECISION` Generates event logs in nanosecond resolution. Defaults to false.
+- `FLUENTD_BUFFER_LIMIT` [int] The amount of data to buffer before flushing to disk. Defaults to the amount of RAM available to the container.
+- `FLUENTD_RETRY_WAIT` [int] How long to wait between retries. Defaults to 1 second.
+- `FLUENTD_MAX_RETRIES` [int] The maximum number of retries. Defaults to 10.
+- `FLUENTD_ASYNC_CONNECT` [true|false] Docker connects to Fluentd in the background. Messages are buffered until the connection is established. Defaults to false.
+- `FLUENTD_SUBSECOND_PRECISION` [true|false] Generates event logs in nanosecond resolution. Defaults to false.
+- `FLUENTD_REQUEST_ACK` [true|false] For reliability. Fluent-bit currently doesn't support this. Defaults to false.
+- `FLUENTD_WRITE_TIMEOUT` [int] Write timeout to post to fluentd/fluent-bit. Defaults to 3 seconds.
 
 
 Configure Logspout to receive forwarded messages, something like this:
