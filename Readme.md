@@ -97,3 +97,7 @@ Configure Logspout to receive forwarded messages, something like this:
     alpine echo hello world
 
 ```
+
+## Demo
+
+![](demo.gif)
