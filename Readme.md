@@ -71,7 +71,7 @@ Configure Logspout to receive forwarded messages, something like this:
 			-e FLUENTD_ASYNC_CONNECT="true" \
 			-e LOGSPOUT="ignore" \
 			mycustomlogspout \
-				./logspout fluentd://192.168.0.11:24224
+				./logspout fluentd://<FLUENT_IP>:24224
 
 ```
 
