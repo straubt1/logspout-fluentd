@@ -61,7 +61,7 @@ Configure Logspout to receive forwarded messages, something like this:
 ```bash
 
 # Build logspout locally with custom fluentd module using Dockerfile
->> docker build -t mycustomlogspout .
+>> docker build --build-arg LOGSPOUT_VERSION=master -t mycustomlogspout .
 
 # Example to run custom built logspout locally:
 >> docker run --rm --name="logspout" \
