@@ -25,7 +25,7 @@ import (
 	"os"
 	"regexp"
 	"strconv"
-	"strings"
+// 	"strings"
 	"time"
 
 	"github.com/fluent/fluent-logger-golang/fluent"
