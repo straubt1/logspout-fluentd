@@ -86,13 +86,14 @@ func (ad *Adapter) Stream(logstream chan *router.Message) {
 			"source":         message.Source,
 		}
 		
+		/*
 		// Check if Audit Log
                	if strings.Contains(message.Data, "[Audit Log]") {
                 	start := strings.Index(message.Data, "{")
                         record["auditlogjson"] = message.Data[start:]
 			record["source"] = "Audit Log"
                 }
-		
+		*/
 		log.Println(tag, message.Time, record)
 
 		// Send to fluentd
