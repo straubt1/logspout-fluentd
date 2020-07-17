@@ -89,7 +89,7 @@ func (ad *Adapter) Stream(logstream chan *router.Message) {
 		// Check if Audit Log
                	if strings.Contains(message.Data, "[Audit Log]") {
                 	start := strings.Index(message.Data, "{")
-                        record["auditlog"] = message.Data[start:]
+                        record["auditlogjson"] = message.Data[start:]
 			record["source"] = "Audit Log"
                 }
 		
